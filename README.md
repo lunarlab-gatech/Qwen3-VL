@@ -13,6 +13,22 @@
 
 
 
+## Local Model Modifications
+
+The following changes were made to downloaded model files to fit within available GPU memory (16 GB).
+These edits are not in the upstream Hugging Face checkpoints — re-downloading a model will revert them.
+
+| Model | File | Field | Original | Modified | Reason |
+|---|---|---|---|---|---|
+| `Qwen2.5-VL-3B-Instruct-AWQ` | `preprocessor_config.json` | `max_pixels` / `size.longest_edge` | 12,845,056 | 1,607,824 | Reduce peak image-token memory (~8x) |
+| `Qwen3-VL-8B-Instruct-FP8` | `preprocessor_config.json` | `size.longest_edge` | 16,777,216 | 4,326,400 | Reduce peak image-token memory; 4,326,400 = 2080² is the smallest value above the max research image size (2400×1800 = 4,320,000 px) that is divisible by (patch_size × merge_size)² = 1024 |
+| `Qwen3-VL-8B-Instruct-FP8` | `research/part_detection/prompt.py` | `max_model_len` (vLLM) | 4,096 | 7,648 | Research prompts with image tokens exceed 4096; 7648 is the maximum that fits in KV cache on 16 GB GPU |
+| `Qwen3-VL-8B-Instruct-FP8` | `preprocessor_config.json` | `size.shortest_edge` | 65,536 | 16,384 | Proportional reduction to match longest_edge change |
+
+Both values must be divisible by `(patch_size × spatial_merge_size)² = 1024` so that `smart_resize`
+can use the full pixel budget without rounding waste. Robot camera images (~700×600) generate
+~418 image tokens each and are unaffected by these caps.
+
 ## Introduction
 Meet Qwen3-VL — the most powerful vision-language model in the Qwen series to date.
 

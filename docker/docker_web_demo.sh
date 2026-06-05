@@ -3,7 +3,7 @@
 # This script will automatically pull docker image from DockerHub, and start a daemon container to run the Qwen-Chat web-demo.
 
 IMAGE_NAME=qwenllm/qwenvl:qwen3vl-cu128
-QWEN_CHECKPOINT_PATH='Qwen/Qwen3-VL-235B-A22B-Instruct'
+QWEN_CHECKPOINT_PATH='/home/dbutterfield3/Research/Qwen3-VL/models/Qwen2.5-VL-3B-Instruct-AWQ'
 PORT=8901
 CONTAINER_NAME=qwen3vl
 
@@ -48,16 +48,18 @@ if [ ! -e ${QWEN_CHECKPOINT_PATH}/config.json ]; then
     exit 1
 fi
 
-sudo docker pull ${IMAGE_NAME} || {
+docker pull ${IMAGE_NAME} || {
     echo "Pulling image ${IMAGE_NAME} failed, exit."
     exit 1
 }
 
-sudo docker run --gpus all -d --restart always --name ${CONTAINER_NAME} \
+docker run --gpus all -d --name ${CONTAINER_NAME} \
+    --env="PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True" \
     -v /var/run/docker.sock:/var/run/docker.sock -p ${PORT}:80 \
     --mount type=bind,source=${QWEN_CHECKPOINT_PATH},target=/data/shared/Qwen/checkpoint \
+    --volume="$(cd "$(dirname "$0")/.." && pwd)/web_demo_mm.py:/vllm-workspace/web_demo_mm.py" \
     -it ${IMAGE_NAME} \
-    python web_demo_mm.py --server-port 80 --server-name 0.0.0.0 -c /data/shared/Qwen/checkpoint/ && {
+    python web_demo_mm.py --server-port 80 --server-name 0.0.0.0 -c /data/shared/Qwen/checkpoint/ --gpu-memory-utilization 0.95 --max-model-len 50000 && {
     echo "Successfully started web demo. Open 'http://localhost:${PORT}' to try!
 Run \`docker logs ${CONTAINER_NAME}\` to check demo status.
 Run \`docker rm -f ${CONTAINER_NAME}\` to stop and remove the demo."

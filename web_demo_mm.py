@@ -58,6 +58,10 @@ def _get_args():
                         type=int,
                         default=None,
                         help='Tensor parallel size for vLLM (default: auto)')
+    parser.add_argument('--max-model-len',
+                        type=int,
+                        default=None,
+                        help='Maximum sequence length for vLLM (default: model config value)')
 
     args = parser.parse_args()
     return args
@@ -80,6 +84,7 @@ def _load_model_processor(args):
             gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=False,
             tensor_parallel_size=tensor_parallel_size,
+            max_model_len=args.max_model_len,
             seed=0
         )
 
