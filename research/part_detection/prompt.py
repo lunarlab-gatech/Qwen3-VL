@@ -58,6 +58,7 @@ class Model(Enum):
     QWEN25_VL_3B_AWQ = "Qwen2.5-VL-3B-Instruct-AWQ"
     QWEN3_VL_8B_FP8  = "Qwen3-VL-8B-Instruct-FP8"
     QWEN3_VL_30B_FP8 = "Qwen3-VL-30B-A3B-Instruct-FP8"
+    QWEN3_VL_235B_A22B = "Qwen3-VL-235B-A22B-Instruct-FP8"
 
 
 _BOX_COLORS = [
@@ -173,7 +174,10 @@ def load_model(checkpoint_path: Path) -> tuple[LLM, AutoProcessor]:
         trust_remote_code=True,
         gpu_memory_utilization=0.95,
         enforce_eager=False,
-        tensor_parallel_size=torch.cuda.device_count(),
+        # tp must divide attn_heads=64 AND keep moe_intermediate/tp divisible by block_n=128 (1536/tp%128==0).
+        # tp=8 fails the latter (192%128≠0); tp=4 satisfies both. pp=2 spreads 235B weights across all 8 GPUs.
+        tensor_parallel_size=4,
+        pipeline_parallel_size=2,
         max_model_len=7168,
         max_num_seqs=1,
         seed=0,
@@ -229,12 +233,45 @@ def build_inputs(image_rgb: np.ndarray, prompt: str, processor: AutoProcessor) -
 
 # ── Response parsing / validation ─────────────────────────────────────────────
 
-_NOT_A_RE = re.compile(r"^Not a .+, but a (.+)\.$", re.IGNORECASE)
+_FAIL_RE    = re.compile(r"^FAIL\s+(\S+)$", re.IGNORECASE)
+_LINE_RE    = re.compile(r"^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)$")
 
-def parse_response(response: str) -> tuple[list | None, str]:
-    """Parse model output as a JSON array of {b, l} detection dicts.
-    Also handles the pre-check format: 'Not a <word>, but a <actual>.'"""
-    text = re.sub(r"```(?:json)?\s*", "", response).strip().rstrip("`").strip()
+
+def parse_label_map(prompt_text: str) -> dict[int, str]:
+    """Extract {index: synset} from the reference list embedded in a prompt.
+    Only matches WordNet-style synset names (word.pos.NN) to avoid false matches
+    in REASON text like 'item [10] in the reference list'."""
+    return {int(m.group(1)): m.group(2)
+            for m in re.finditer(r"\[(\d+)\]\s*([\w.\-]+\.[a-z]\.\d+)", prompt_text)}
+
+
+def parse_response(response: str, label_map: dict[int, str] | None = None) -> tuple[list | None, str]:
+    """Parse model output.
+
+    Accepts either:
+    - Line-based format: 'xmin ymin xmax ymax label' per line
+      where label is a synset name (e.g. car_window.n.01) or plain-English string.
+    - Legacy JSON array of {bbox_2d/b, l} dicts.
+    Also handles the pre-check: 'FAIL <actual_object>'
+    """
+    text = response.strip()
+
+    if _FAIL_RE.match(text):
+        return [], ""
+
+    # Line-based format: every non-empty line matches the pattern
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if lines and all(_LINE_RE.match(l) for l in lines):
+        result = []
+        for line in lines:
+            m = _LINE_RE.match(line)
+            xmin, ymin, xmax, ymax = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+            label = m.group(5)
+            result.append({"b": [xmin, ymin, xmax, ymax], "l": label})
+        return result, ""
+
+    # Legacy JSON fallback
+    text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
     try:
         data = json.loads(text)
         if not isinstance(data, list):
@@ -242,27 +279,60 @@ def parse_response(response: str) -> tuple[list | None, str]:
         return data, ""
     except json.JSONDecodeError:
         pass
-    m = _NOT_A_RE.match(text)
-    if m:
-        return [], ""
+
     return None, "LVLM output not in valid format"
 
 
 def validate_response(data: list) -> tuple[list, list[str]]:
-    """Validate each detection entry; return (valid_list, warnings)."""
+    """Validate each detection entry; return (valid_list, warnings).
+
+    Accepts both 'b'/'l' keys (line-based legacy) and 'bbox_2d'/'label' keys (JSON native).
+    Normalises everything to {'b': [...], 'l': str, 'confidence': float | None}.
+    """
     warnings: list[str] = []
     result: list = []
     for i, item in enumerate(data):
-        if not isinstance(item, dict) or "b" not in item or "l" not in item:
-            warnings.append(f"[{i}]: missing 'b' or 'l' field")
+        if not isinstance(item, dict):
+            warnings.append(f"[{i}]: not a dict")
             continue
-        b = item["b"]
+        # Resolve bbox key
+        bbox_key = "b" if "b" in item else "bbox_2d" if "bbox_2d" in item else None
+        # Resolve label key
+        label_key = "l" if "l" in item else "label" if "label" in item else None
+        if bbox_key is None or label_key is None:
+            warnings.append(f"[{i}]: missing bbox or label field")
+            continue
+        b = item[bbox_key]
         if not (isinstance(b, list) and len(b) == 4
                 and all(isinstance(v, (int, float)) for v in b)):
-            warnings.append(f"[{i}] '{item.get('l', '?')}': invalid 'b' (need [ymin,xmin,ymax,xmax])")
+            warnings.append(f"[{i}] '{item.get(label_key, '?')}': invalid bbox")
             continue
-        result.append(item)
+        normalized: dict = {
+            "b": b if bbox_key == "b" else b,
+            "l": str(item[label_key]),
+        }
+        if "bbox_2d" in item and bbox_key == "bbox_2d":
+            normalized["b"] = item["bbox_2d"]
+        if "confidence" in item:
+            try:
+                normalized["confidence"] = float(item["confidence"])
+            except (TypeError, ValueError):
+                pass
+        result.append(normalized)
     return result, warnings
+
+
+def postprocess_detections(detections: list) -> list:
+    """Filter boxes covering >75% of the image and sort largest area first."""
+    MAX_AREA = 0.75 * 1_000_000  # 750_000 in normalised [0,1000]^2 space
+
+    def area(item):
+        b = item["b"]
+        return (b[2] - b[0]) * (b[3] - b[1])
+
+    filtered = [d for d in detections if area(d) <= MAX_AREA]
+    filtered.sort(key=area, reverse=True)
+    return filtered
 
 
 # ── Visualisation ─────────────────────────────────────────────────────────────

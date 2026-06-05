@@ -1,0 +1,330 @@
+{
+  "/home/dbutterfield3/Qwen3-VL/research/single_obj_part_detection/images/1.jpg": [
+    {
+      "b": [
+        83,
+        317,
+        839,
+        709
+      ],
+      "l": "automobile_horn.n.01",
+      "confidence": 0.98
+    },
+    {
+      "b": [
+        546,
+        417,
+        710,
+        625
+      ],
+      "l": "car_door.n.01",
+      "confidence": 0.93
+    },
+    {
+      "b": [
+        100,
+        410,
+        460,
+        500
+      ],
+      "l": "hood.n.09",
+      "confidence": 0.96
+    },
+    {
+      "b": [
+        377,
+        506,
+        498,
+        708
+      ],
+      "l": "wheel.n.01",
+      "confidence": 0.96
+    },
+    {
+      "b": [
+        317,
+        333,
+        577,
+        421
+      ],
+      "l": "windshield.n.01",
+      "confidence": 0.95
+    },
+    {
+      "b": [
+        547,
+        320,
+        780,
+        412
+      ],
+      "l": "roof.n.02",
+      "confidence": 0.92
+    },
+    {
+      "b": [
+        720,
+        496,
+        810,
+        660
+      ],
+      "l": "wheel.n.01",
+      "confidence": 0.94
+    },
+    {
+      "b": [
+        90,
+        496,
+        265,
+        566
+      ],
+      "l": "grille.n.02",
+      "confidence": 0.97
+    },
+    {
+      "b": [
+        551,
+        341,
+        687,
+        424
+      ],
+      "l": "car_window.n.01",
+      "confidence": 0.93
+    },
+    {
+      "b": [
+        783,
+        412,
+        838,
+        598
+      ],
+      "l": "trunk",
+      "confidence": 0.87
+    },
+    {
+      "b": [
+        100,
+        592,
+        268,
+        636
+      ],
+      "l": "bumper.n.02",
+      "confidence": 0.91
+    },
+    {
+      "b": [
+        270,
+        488,
+        392,
+        526
+      ],
+      "l": "headlight",
+      "confidence": 0.94
+    },
+    {
+      "b": [
+        147,
+        650,
+        243,
+        682
+      ],
+      "l": "wheel.n.01",
+      "confidence": 0.85
+    },
+    {
+      "b": [
+        685,
+        360,
+        730,
+        417
+      ],
+      "l": "car_window.n.01",
+      "confidence": 0.88
+    },
+    {
+      "b": [
+        569,
+        390,
+        628,
+        426
+      ],
+      "l": "car_mirror.n.01",
+      "confidence": 0.92
+    },
+    {
+      "b": [
+        470,
+        367,
+        515,
+        414
+      ],
+      "l": "car_seat.n.01",
+      "confidence": 0.8
+    },
+    {
+      "b": [
+        275,
+        561,
+        360,
+        585
+      ],
+      "l": "fog_light",
+      "confidence": 0.89
+    },
+    {
+      "b": [
+        593,
+        370,
+        628,
+        405
+      ],
+      "l": "car_seat.n.01",
+      "confidence": 0.82
+    },
+    {
+      "b": [
+        151,
+        512,
+        185,
+        539
+      ],
+      "l": "logo",
+      "confidence": 0.95
+    },
+    {
+      "b": [
+        522,
+        494,
+        544,
+        508
+      ],
+      "l": "badge",
+      "confidence": 0.9
+    }
+  ],
+  "/home/dbutterfield3/Qwen3-VL/research/single_obj_part_detection/images/2.png": [],
+  "/home/dbutterfield3/Qwen3-VL/research/single_obj_part_detection/images/3.png": [
+    {
+      "b": [
+        0,
+        244,
+        850,
+        700
+      ],
+      "l": "tailgate.n.01",
+      "confidence": 0.9
+    },
+    {
+      "b": [
+        0,
+        750,
+        790,
+        990
+      ],
+      "l": "bumper.n.02",
+      "confidence": 0.8
+    },
+    {
+      "b": [
+        750,
+        47,
+        960,
+        867
+      ],
+      "l": "car_door.n.01",
+      "confidence": 0.75
+    },
+    {
+      "b": [
+        112,
+        67,
+        778,
+        250
+      ],
+      "l": "rear_window.n.01",
+      "confidence": 0.85
+    },
+    {
+      "b": [
+        750,
+        47,
+        960,
+        310
+      ],
+      "l": "roof.n.02",
+      "confidence": 0.7
+    },
+    {
+      "b": [
+        650,
+        344,
+        845,
+        590
+      ],
+      "l": "tail_light",
+      "confidence": 0.8
+    },
+    {
+      "b": [
+        0,
+        720,
+        150,
+        990
+      ],
+      "l": "wheel.n.01",
+      "confidence": 0.7
+    },
+    {
+      "b": [
+        860,
+        550,
+        950,
+        990
+      ],
+      "l": "wheel.n.01",
+      "confidence": 0.7
+    },
+    {
+      "b": [
+        243,
+        367,
+        463,
+        484
+      ],
+      "l": "license_plate",
+      "confidence": 0.95
+    },
+    {
+      "b": [
+        0,
+        287,
+        87,
+        534
+      ],
+      "l": "tail_light",
+      "confidence": 0.8
+    }
+  ],
+  "/home/dbutterfield3/Qwen3-VL/research/single_obj_part_detection/images/4.png": [
+    {
+      "b": [
+        222,
+        38,
+        680,
+        997
+      ],
+      "l": "lamppost.n.01",
+      "confidence": 0.95
+    },
+    {
+      "b": [
+        868,
+        33,
+        1000,
+        178
+      ],
+      "l": "light_fixture",
+      "confidence": 0.7
+    }
+  ],
+  "/home/dbutterfield3/Qwen3-VL/research/single_obj_part_detection/images/5.png": []
+}

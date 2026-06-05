@@ -1,17 +1,24 @@
 import sys
 import json
+import base64
+import io
+import math
 import random
+import time
+import asyncio
 from pathlib import Path
 
 import cv2
 import numpy as np
+import openai
 from PIL import Image
 
-# Reuse model/inference utilities from part_detection
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "part_detection"))
-from prompt import load_model, build_inputs, parse_response, validate_response, Model
+from prompt import parse_response, validate_response, parse_label_map, postprocess_detections
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
+_SCRIPT_DIR  = Path(__file__).resolve().parent
+_CLIENT      = openai.AsyncOpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+_MODEL       = "qwen3-vl"
 
 _IMAGE_PROMPT_MAP: list[tuple[str, str]] = [
     ("images/1.jpg", "PROMPT_CAR.md"),
@@ -63,49 +70,118 @@ def draw_boxes(image_path, boxes, output_path="meronomy/visualized_car.png"):
     print(f"Saved: {output_path}")
 
 
-def main():
-    checkpoint_path = Path.home() / "Qwen3-VL" / "models" / Model.QWEN3_VL_8B_FP8.value
-    model, processor = load_model(checkpoint_path)
+async def infer(image_path: Path, prompt: str) -> tuple[str, object, float, str]:
+    pil_img = Image.open(image_path).convert("RGB")
+    w, h = pil_img.size
+    img_info = f"{w}x{h} = {w*h:,} px"
+    if w * h < 1_000_000:
+        scale = math.sqrt(1_000_000 / (w * h))
+        pil_img = pil_img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        w, h = pil_img.size
+        img_info += f" → upscaled to {w}x{h} = {w*h:,} px"
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+
+    t0 = time.perf_counter()
+    completion = await _CLIENT.chat.completions.create(
+        model=_MODEL,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                {"type": "text", "text": prompt},
+            ],
+        }],
+        max_tokens=4096,
+        temperature=0.3,
+    )
+    elapsed = time.perf_counter() - t0
+    return completion.choices[0].message.content, completion.usage, elapsed, img_info
+
+
+async def main():
+    pairs = [
+        (
+            _SCRIPT_DIR / rel_image,
+            (_SCRIPT_DIR / rel_prompt).read_text().strip(),
+            rel_image,
+        )
+        for rel_image, rel_prompt in _IMAGE_PROMPT_MAP
+    ]
+
+    t_total = time.perf_counter()
+    results = await asyncio.gather(*[infer(p, prompt) for p, prompt, _ in pairs])
+    total_elapsed = time.perf_counter() - t_total
 
     all_boxes: dict[str, list] = {}
+    per_prompt_metrics: list[dict] = []
 
-    for rel_image, rel_prompt in _IMAGE_PROMPT_MAP:
-        image_path = _SCRIPT_DIR / rel_image
-        prompt = (_SCRIPT_DIR / rel_prompt).read_text().strip()
+    for (image_path, prompt, rel_image), (response, usage, elapsed, img_info) in zip(pairs, results):
+        label_map = parse_label_map(prompt)
+        print(f"[{rel_image}]")
+        print(f"  [image]  {img_info}")
+        print(f"  [timing] {elapsed:.1f}s | {usage.prompt_tokens} prompt tok | {usage.completion_tokens} completion tok | {usage.completion_tokens / elapsed:.1f} tok/s")
+        print(f"  [response]\n{response}")
 
-        image_rgb = np.array(Image.open(image_path).convert("RGB"))
-        inputs = build_inputs(image_rgb, prompt, processor)
-
-        from vllm import SamplingParams
-        outputs = model.generate(inputs, SamplingParams(max_tokens=1024))
-        response = outputs[0].outputs[0].text
-        print(f"[{rel_image}] {response}")
-
-        parsed, parse_error = parse_response(response)
+        parsed, parse_error = parse_response(response, label_map)
         if parsed is None:
             print(f"  [parse error] {parse_error}")
             detections = []
         else:
             detections, warnings = validate_response(parsed)
-            for w in warnings:
-                print(f"  [validation] {w}")
+            for warning in warnings:
+                print(f"  [validation] {warning}")
+            detections = postprocess_detections(detections)
 
         all_boxes[str(image_path)] = detections
+        per_prompt_metrics.append({
+            "image": rel_image,
+            "latency_s": round(elapsed, 3),
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "completion_tok_per_s": round(usage.completion_tokens / elapsed, 2),
+        })
+        print()
 
-    output_dir = _SCRIPT_DIR / "meronomy"
-    output_dir.mkdir(exist_ok=True)
+    total_completion_tokens = sum(m["completion_tokens"] for m in per_prompt_metrics)
+    total_prompt_tokens = sum(m["prompt_tokens"] for m in per_prompt_metrics)
+    avg_latency = sum(m["latency_s"] for m in per_prompt_metrics) / len(per_prompt_metrics)
+    avg_time_per_request = total_elapsed / len(per_prompt_metrics)
+    throughput = total_completion_tokens / total_elapsed
+
+    metrics = {
+        "total_time_s": round(total_elapsed, 3),
+        "avg_latency_s": round(avg_latency, 3),
+        "avg_time_per_request_s": round(avg_time_per_request, 3),
+        "overall_throughput_tok_per_s": round(throughput, 2),
+        "total_prompt_tokens": total_prompt_tokens,
+        "total_completion_tokens": total_completion_tokens,
+        "per_prompt": per_prompt_metrics,
+    }
+
+    print(f"[summary]")
+    print(f"  total time        : {total_elapsed:.1f}s")
+    print(f"  avg latency       : {avg_latency:.1f}s")
+    print(f"  avg time/request  : {avg_time_per_request:.1f}s  (total / {len(per_prompt_metrics)} requests)")
+    print(f"  overall throughput: {throughput:.1f} completion tok/s")
+    print(f"  total tokens      : {total_prompt_tokens} prompt + {total_completion_tokens} completion\n")
+
+    output_dir = _SCRIPT_DIR / "meronomy" / _MODEL
+    output_dir.mkdir(parents=True, exist_ok=True)
     results_path = output_dir / "results.json"
-    results_path.write_text(json.dumps(
-        {k: v for k, v in all_boxes.items()}, indent=2
-    ))
+    results_path.write_text(json.dumps(all_boxes, indent=2))
     print(f"Results saved to {results_path}")
+
+    metrics_path = output_dir / "metrics.json"
+    metrics_path.write_text(json.dumps(metrics, indent=2))
+    print(f"Metrics saved to {metrics_path}")
 
     for rel_image, _ in _IMAGE_PROMPT_MAP:
         image_path = str(_SCRIPT_DIR / rel_image)
-        if all_boxes.get(image_path):
-            stem = Path(rel_image).stem
-            draw_boxes(image_path, all_boxes, str(output_dir / f"visualized_{stem}.png"))
+        stem = Path(rel_image).stem
+        draw_boxes(image_path, all_boxes, str(output_dir / f"visualized_{stem}.png"))
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

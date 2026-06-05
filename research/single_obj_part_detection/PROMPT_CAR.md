@@ -5,49 +5,40 @@ You are an expert object detection and localization AI. Your task is to analyze 
 
 ### Pre-check:
 If the image does not depict a car, output only this single line and nothing else:
-Not a car, but a <actual object name>.
-Use the most commonly used term for <actual object name> (e.g., "truck", "motorcycle", "bus").
+FAIL <actual_object_name>
+Use the most commonly used term. Replace spaces with underscores (e.g., FAIL truck, FAIL concrete_crack, FAIL stop_sign). One word or underscored phrase only — no spaces, no punctuation.
 
 ### Instructions:
-1. Scan the image for any visible items corresponding to the list above. You may also include additional clearly visible parts of the main object that are not in the reference list, using the standard, most commonly used term for that part (e.g., "license_plate").
-2. Localize each detected item using standard normalized bounding boxes `[xmin, ymin, xmax, ymax]` on a scale of 0 to 1000.
-3. For the output "l" field, extract only the WordNet synset string (e.g., "car_window.n.01"). Do NOT include the index number or brackets (e.g., exclude "[10]").
-4. Each physical object in the image may only be assigned ONE label. Do NOT output multiple entries for the same physical object (e.g., do not label the same wheel as both "wheel.n.01" and "car_wheel.n.01"). Choose the single most specific label from the reference list that applies.
-5. Do NOT output any bounding box that covers more than 75% of the total image area.
+1. Scan the image for any visible items corresponding to the list above. You may also include additional clearly visible parts of the main object that are not in the reference list, using the standard, most commonly used term for that part (e.g., license_plate).
+2. Localize each detected item using standard normalized bounding boxes [xmin, ymin, xmax, ymax] on a scale of 0 to 1000.
+3. Each physical object in the image may only be assigned ONE label. Do NOT output multiple entries for the same physical object. Choose the single most specific label from the reference list that applies.
+4. Do NOT tile the image into a grid. A grid tile is any box that, together with other boxes, forms a row or column pattern covering the full image — regardless of how many rows or columns. If you cannot clearly see an individual part, omit it. Output fewer detections rather than tiling.
+5. If multiple nearby regions could be the same part, merge them into one bounding box. Only split into separate boxes if you are confident they are distinct, individually identifiable physical parts.
+6. Output at most 20 detections total. Include only the most clearly and confidently visible parts.
 
-### Output Rules (CRITICAL):
-1. Output MUST be a raw, valid JSON array of objects.
-2. DO NOT include the markdown code block backticks (```json ... 
-```). Start directly with `[` and end with `]`.
-3. DO NOT include any conversational text, pleasantries, explanations, or markdown before or after the JSON.
-4. For the "l" field, extract ONLY the WordNet synset name. 
-   * CRITICAL CRITERIA: Strictly exclude the reference index number and brackets. (e.g., Output "car_window.n.01", NOT "[6] car_window.n.01" or "[6]").
-5. Output must include integers in the range [0, 1000] representing fractions of the total width and height scaled by 1000.
+### Output Format:
+Output a JSON array. Each element must have exactly these three fields:
+- "bbox_2d": [xmin, ymin, xmax, ymax] — four integers in [0, 1000]
+- "label": the exact synset name from the reference list (e.g., "car_mirror.n.01"), or a plain English name with no spaces if not in the list (e.g., "license_plate")
+- "confidence": a float in [0.0, 1.0] — your confidence this detection is correct (1.0 = certain, 0.5 = 50% chance, 0.0 = not confident)
 
-### Output Examples:
-CORRECT EXAMPLE:
+### Output Example:
+```json
 [
-    {"b": [345, 563, 427, 672], "l": "car_window.n.01"},
-    {"b": [443, 94, 506, 381], "l": "hood.n.09"},
-    {"b": [538, 120, 568, 210], "l": "license_plate"}
+  {"bbox_2d": [150, 450, 280, 650], "label": "wheel.n.01", "confidence": 0.95},
+  {"bbox_2d": [443, 94, 506, 381], "label": "hood.n.09", "confidence": 0.9},
+  {"bbox_2d": [345, 563, 427, 672], "label": "car_window.n.01", "confidence": 0.75},
+  {"bbox_2d": [538, 120, 568, 210], "label": "license_plate", "confidence": 0.6}
 ]
-NOTE: "license_plate" is not in the reference list but is included because it is a clearly visible part of the car.
+```
 
-WRONG EXAMPLE 1 (Using Floats):
+WRONG EXAMPLE (Grid tiling — do not do this):
+```json
 [
-    {"b": [0.345, 0.563, 0.427, 0.672], "l": "car_window.n.01"}
+  {"bbox_2d": [0, 0, 500, 333], "label": "roof.n.02", "confidence": 0.7},
+  {"bbox_2d": [500, 0, 1000, 333], "label": "roof.n.02", "confidence": 0.7},
+  {"bbox_2d": [0, 333, 500, 666], "label": "car_door.n.01", "confidence": 0.7},
+  {"bbox_2d": [500, 333, 1000, 666], "label": "car_door.n.01", "confidence": 0.7}
 ]
-REASON: This is wrong because it uses floats. All bounding box coordinates MUST be integers in the range [0, 1000].
-
-WRONG EXAMPLE 2 (Duplicate labels for the same physical object):
-[
-    {"b": [504, 383, 715, 508], "l": "car_wheel.n.01"},
-    {"b": [504, 383, 715, 508], "l": "wheel.n.01"}
-]
-REASON: This is wrong because both entries refer to the same physical object. Each physical object must have exactly ONE label — choose the most specific one.
-
-WRONG EXAMPLE 3 (Bounding box covers the entire object):
-[
-    {"b": [321, 82, 715, 841], "l": "bodywork.n.01"}
-]
-REASON: This is wrong because the bounding box spans nearly the entire image. For a car image, a label like "bodywork.n.01" that encloses the whole vehicle is too coarse. Only output boxes for distinct, localized parts (e.g., a door, a wheel, a mirror) — not parts whose bounding box would cover more than 75% of the total image area.
+```
+REASON: These boxes form a grid. Each detection must correspond to one clearly visible, individually identifiable physical part.

@@ -1,0 +1,45 @@
+{
+  "total_time_s": 36.978,
+  "avg_latency_s": 13.891,
+  "avg_time_per_request_s": 7.396,
+  "overall_throughput_tok_per_s": 40.94,
+  "total_prompt_tokens": 15096,
+  "total_completion_tokens": 1514,
+  "per_prompt": [
+    {
+      "image": "images/1.jpg",
+      "latency_s": 36.745,
+      "prompt_tokens": 5757,
+      "completion_tokens": 919,
+      "completion_tok_per_s": 25.01
+    },
+    {
+      "image": "images/2.png",
+      "latency_s": 14.5,
+      "prompt_tokens": 2525,
+      "completion_tokens": 51,
+      "completion_tok_per_s": 3.52
+    },
+    {
+      "image": "images/3.png",
+      "latency_s": 13.012,
+      "prompt_tokens": 2545,
+      "completion_tokens": 443,
+      "completion_tok_per_s": 34.04
+    },
+    {
+      "image": "images/4.png",
+      "latency_s": 2.513,
+      "prompt_tokens": 1732,
+      "completion_tokens": 96,
+      "completion_tok_per_s": 38.2
+    },
+    {
+      "image": "images/5.png",
+      "latency_s": 2.683,
+      "prompt_tokens": 2537,
+      "completion_tokens": 5,
+      "completion_tok_per_s": 1.86
+    }
+  ]
+}
